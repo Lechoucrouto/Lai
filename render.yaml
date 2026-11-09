@@ -1,0 +1,40 @@
+services:
+  # 1. Web Service (FastAPI API server handling client requests & streaming)
+  - type: web
+    name: heavy-rag-api
+    runtime: python
+    region: oregon
+    plan: starter # Upgrade based on traffic demands
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: agent-redis-queue
+          property: connectionString
+
+  # 2. Background Worker (Persistent process running long LLM agent loops)
+  - type: worker
+    name: heavy-rag-worker
+    runtime: python
+    region: oregon
+    plan: starter # Ensure sufficient RAM for vector index operations (e.g., standard-1x if parsing large PDFs)
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "arq app.worker.WorkerSettings"
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: agent-redis-queue
+          property: connectionString
+
+  # 3. Redis Task Queue & Event Bus
+  - type: keyvalue
+    name: agent-redis-queue
+    region: oregon
+    plan: free # Managed Redis instance on Render
